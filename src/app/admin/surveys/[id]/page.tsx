@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { SurveyData, SubmissionData } from '@/types/survey';
+import { packSurvey } from '@/lib/surveyPacker';
 import {
   ArrowLeft,
   QrCode,
@@ -37,6 +38,15 @@ export default function SurveyDetailPage() {
   const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   const [surveyUrl, setSurveyUrl] = useState('');
+  const [useOfflinePayload, setUseOfflinePayload] = useState(true);
+
+  const activeQrUrl = React.useMemo(() => {
+    if (!survey || typeof window === 'undefined') return surveyUrl;
+    const base = `${window.location.origin}/s/${survey.id}`;
+    if (!useOfflinePayload) return base;
+    const packed = packSurvey(survey);
+    return `${base}?d=${packed}`;
+  }, [survey, surveyUrl, useOfflinePayload]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && surveyId) {
@@ -194,13 +204,29 @@ export default function SurveyDetailPage() {
                 {survey.title}
               </h3>
 
+              {/* Offline mode toggle */}
+              <div className="mb-3 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setUseOfflinePayload(!useOfflinePayload)}
+                  className={`text-[11px] px-3 py-1.5 rounded-full font-semibold border flex items-center gap-1.5 transition ${
+                    useOfflinePayload
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-slate-50 text-slate-500 border-slate-200'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${useOfflinePayload ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`} />
+                  {useOfflinePayload ? 'Offline Self-Contained QR: ON' : 'Standard Online Link QR: ON'}
+                </button>
+              </div>
+
               {/* QR Code Canvas (for PNG export) and SVG (for crisp rendering) */}
               <div className="p-4 bg-white border-2 border-slate-900 rounded-2xl shadow-inner mb-4 inline-block">
-                {surveyUrl && (
+                {activeQrUrl && (
                   <QRCodeSVG
-                    value={surveyUrl}
-                    size={200}
-                    level="H"
+                    value={activeQrUrl}
+                    size={220}
+                    level="M"
                     includeMargin={false}
                   />
                 )}
@@ -208,24 +234,28 @@ export default function SurveyDetailPage() {
 
               {/* Hidden canvas element used to export high-res PNG */}
               <div ref={qrCanvasRef} className="hidden">
-                {surveyUrl && (
+                {activeQrUrl && (
                   <QRCodeCanvas
-                    value={surveyUrl}
+                    value={activeQrUrl}
                     size={600}
-                    level="H"
+                    level="M"
                     includeMargin={true}
                   />
                 )}
               </div>
 
               <p className="text-xs text-slate-500 font-mono bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg max-w-full truncate mb-4">
-                {surveyUrl}
+                {activeQrUrl}
               </p>
 
               {/* Action buttons (hidden when printing) */}
               <div className="w-full space-y-2 print:hidden">
                 <button
-                  onClick={handleCopyLink}
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeQrUrl);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2500);
+                  }}
                   className="w-full py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}

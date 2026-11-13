@@ -92,14 +92,10 @@ export default function NetworkBanner({ surveyId }: { surveyId?: string }) {
       </div>
 
       {isOnline && hasPending && (
-        <button
-          onClick={handleManualSync}
-          disabled={isSyncing}
-          className="shrink-0 inline-flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg text-[11px] font-semibold transition disabled:opacity-60"
-        >
-          <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-          {isSyncing ? 'Syncing…' : 'Sync now'}
-        </button>
+        <span className="shrink-0 inline-flex items-center gap-1.5 bg-white/20 text-white px-2.5 py-0.5 rounded-full text-[11px] font-semibold">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          Auto-syncing to admin…
+        </span>
       )}
     </div>
   );

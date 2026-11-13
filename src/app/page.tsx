@@ -1,14 +1,11 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
+import HomeClientActions from '@/components/HomeClientActions';
 import {
   QrCode,
   WifiOff,
   CloudUpload,
-  ArrowRight,
   ShieldCheck,
-  Smartphone,
-  BarChart3,
-  Zap,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -71,28 +68,8 @@ export default async function HomePage() {
             Respondents scan your printed QR code with any phone camera. Even with zero signal, every answer auto-saves to the phone and silently uploads the moment connectivity returns.
           </p>
 
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-20">
-            <Link
-              href="/admin"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm shadow-brand transition"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Open Dashboard
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-
-            {latestSurvey && (
-              <Link
-                href={`/s/${latestSurvey.id}`}
-                target="_blank"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white/[0.07] hover:bg-white/[0.12] border border-white/[0.1] text-white font-semibold rounded-xl text-sm transition"
-              >
-                <Smartphone className="w-4 h-4 text-blue-400" />
-                Try Live Survey
-              </Link>
-            )}
-          </div>
+          {/* Interactive CTAs with in-app offline scanner */}
+          <HomeClientActions latestSurveyId={latestSurvey?.id} />
 
           {/* Feature trio */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">

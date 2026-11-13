@@ -77,11 +77,22 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => {
-          return caches.match(request).then((cached) => {
-            if (cached) return cached;
-            return caches.match('/');
-          });
+        .catch(async () => {
+          const directMatch = await caches.match(request);
+          if (directMatch) return directMatch;
+
+          // If navigating to a survey URL offline, serve any cached survey shell
+          if (url.pathname.startsWith('/s/')) {
+            const cache = await caches.open(CACHE_NAME);
+            const keys = await cache.keys();
+            const surveyShellKey = keys.find((k) => new URL(k.url).pathname.startsWith('/s/'));
+            if (surveyShellKey) {
+              const shell = await cache.match(surveyShellKey);
+              if (shell) return shell;
+            }
+          }
+
+          return (await caches.match('/')) || new Response('Offline', { status: 503 });
         })
     );
     return;

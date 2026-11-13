@@ -146,10 +146,32 @@ export async function syncPendingSubmissions(surveyId?: string): Promise<{ synce
   }
 }
 
-// Auto-register listener when loaded on client
+// Auto-register persistent background sync engine on client
 if (typeof window !== 'undefined') {
+  // 1. Trigger immediately when internet reconnects
   window.addEventListener('online', () => {
-    console.log('[OfflineSync] Internet restored. Triggering auto-sync...');
+    console.log('[OfflineSync] Internet restored. Triggering auto-upload to admin...');
     syncPendingSubmissions().catch(console.error);
   });
+
+  // 2. Trigger when surveyor unlocks phone or switches back to the app
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      syncPendingSubmissions().catch(console.error);
+    }
+  });
+
+  // 3. Heartbeat auto-sync daemon: every 4 seconds silently checks and flushes pending queue
+  setInterval(() => {
+    if (navigator.onLine) {
+      syncPendingSubmissions().catch(console.error);
+    }
+  }, 4000);
+
+  // 4. Initial startup check
+  if (navigator.onLine) {
+    setTimeout(() => {
+      syncPendingSubmissions().catch(console.error);
+    }, 1000);
+  }
 }

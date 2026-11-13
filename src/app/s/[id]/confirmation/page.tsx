@@ -108,31 +108,32 @@ export default function ConfirmationPage() {
           </div>
 
           {/* Actions */}
-          <div className="space-y-2.5">
-            {!isSynced && isOnline && (
-              <button
-                onClick={handleSyncNow}
-                disabled={isSyncing}
-                className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold rounded-xl text-sm shadow-sm transition flex items-center justify-center gap-2"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} strokeWidth={2.5} />
-                {isSyncing ? 'Uploading…' : 'Upload now'}
-              </button>
+          <div className="space-y-3">
+            {!isSynced ? (
+              <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-800 flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <span>Auto-upload active — sends to admin automatically once online.</span>
+              </div>
+            ) : (
+              <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Successfully sent to admin!</span>
+              </div>
             )}
 
             <Link
               href={`/s/${surveyId}`}
-              className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-brand-sm"
             >
-              Submit another response
+              Take Another Survey
               <ArrowRight className="w-4 h-4" />
             </Link>
 
             <Link
               href="/"
-              className="block text-xs text-slate-400 hover:text-slate-600 py-1 transition"
+              className="block text-xs text-slate-400 hover:text-slate-600 py-1 transition text-center"
             >
-              Return to home
+              Return to Home
             </Link>
           </div>
         </div>

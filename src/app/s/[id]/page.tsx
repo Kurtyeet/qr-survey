@@ -1,87 +1,116 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { SurveyData } from '@/types/survey';
 import { getCachedSurvey, cacheSurvey } from '@/lib/syncEngine';
+import { unpackSurvey } from '@/lib/surveyPacker';
 import NetworkBanner from '@/components/NetworkBanner';
 import SurveyForm from '@/components/SurveyForm';
-import { ClipboardList, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
+import { ClipboardList, AlertCircle, RefreshCw, QrCode } from 'lucide-react';
 
 export default function SurveyPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const surveyId = params?.id as string;
+  const packedParam = searchParams?.get('d');
 
   const [survey, setSurvey] = useState<SurveyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [loadedFromCache, setLoadedFromCache] = useState(false);
+  const [sourceLabel, setSourceLabel] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!surveyId) return;
     let isMounted = true;
 
-    async function loadSurvey() {
+    async function resolveSurvey() {
       setLoading(true);
       setError(null);
 
-      try {
-        const res = await fetch(`/api/surveys/${surveyId}`, { cache: 'no-store' });
-        if (res.ok) {
-          const data: SurveyData = await res.json();
-          if (isMounted) {
-            setSurvey(data);
-            setLoadedFromCache(false);
-            cacheSurvey(data).catch(console.error);
+      // 1. FASTEST & 100% OFFLINE: Decode directly from QR code payload (?d=...)
+      if (packedParam) {
+        const unpacked = unpackSurvey(packedParam);
+        if (unpacked && isMounted) {
+          setSurvey(unpacked);
+          setSourceLabel('Scanned Offline via QR Code');
+          setLoading(false);
+          cacheSurvey(unpacked).catch(console.error);
+          return;
+        }
+      }
+
+      // 2. CHECK LOCAL INDEXEDDB CACHE (Offline persistence)
+      if (surveyId) {
+        try {
+          const cached = await getCachedSurvey(surveyId);
+          if (cached && isMounted) {
+            setSurvey(cached);
+            setSourceLabel('Loaded from Device Storage');
+            setLoading(false);
+            return;
           }
-          return;
+        } catch (cacheErr) {
+          console.warn('Cache lookup failed:', cacheErr);
         }
-      } catch {
-        // offline — try cache
       }
 
-      try {
-        const cached = await getCachedSurvey(surveyId);
-        if (cached && isMounted) {
-          setSurvey(cached);
-          setLoadedFromCache(true);
-          return;
+      // 3. IF ONLINE, FETCH FROM SERVER
+      if (surveyId && typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          const res = await fetch(`/api/surveys/${surveyId}`, { cache: 'no-store' });
+          if (res.ok) {
+            const data: SurveyData = await res.json();
+            if (isMounted) {
+              setSurvey(data);
+              setSourceLabel(null);
+              setLoading(false);
+              cacheSurvey(data).catch(console.error);
+            }
+            return;
+          }
+        } catch (fetchErr) {
+          console.warn('Online fetch failed:', fetchErr);
         }
-      } catch (cacheErr) {
-        console.error(cacheErr);
       }
 
-      if (isMounted)
-        setError('Could not load survey. If you are offline, visit this page while online first to cache it.');
+      if (isMounted) {
+        setError(
+          'Survey not found. If your phone is currently offline, please scan a QR code that includes the offline survey payload.'
+        );
+        setLoading(false);
+      }
     }
 
-    loadSurvey().finally(() => { if (isMounted) setLoading(false); });
-    return () => { isMounted = false; };
-  }, [surveyId]);
+    resolveSurvey();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [surveyId, packedParam]);
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Sticky network banner */}
+      {/* Sticky real-time auto-sync banner */}
       <div className="sticky top-0 z-50">
-        <NetworkBanner surveyId={surveyId} />
+        <NetworkBanner surveyId={survey?.id || surveyId} />
       </div>
 
       <main className="flex-1 max-w-lg w-full mx-auto px-4 sm:px-6 py-6 pb-16">
-        {/* Loading */}
+        {/* Loading State */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-24 text-slate-400 animate-fade-in">
             <RefreshCw className="w-7 h-7 animate-spin text-blue-600 mb-3" />
-            <p className="text-sm font-medium">Loading survey…</p>
+            <p className="text-sm font-medium">Opening survey...</p>
           </div>
         )}
 
-        {/* Error */}
+        {/* Error State */}
         {error && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 text-center my-8 animate-slide-up">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-6 h-6 text-red-600" />
             </div>
-            <h2 className="text-base font-bold text-slate-900 mb-1">Can't load survey</h2>
+            <h2 className="text-base font-bold text-slate-900 mb-1">Cannot Load Survey</h2>
             <p className="text-sm text-slate-500 mb-5 leading-relaxed max-w-xs mx-auto">{error}</p>
             <button
               onClick={() => window.location.reload()}
@@ -92,18 +121,17 @@ export default function SurveyPage() {
           </div>
         )}
 
-        {/* Survey */}
+        {/* Survey Content */}
         {!loading && survey && (
           <div className="animate-slide-up">
-            {/* Header card */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-6 mb-5">
               <div className="flex items-center gap-2 text-blue-600 mb-3">
                 <ClipboardList className="w-4 h-4" strokeWidth={2.5} />
                 <span className="text-xs font-bold uppercase tracking-widest">Survey</span>
-                {loadedFromCache && (
-                  <span className="ml-auto inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    <WifiOff className="w-3 h-3" />
-                    Offline cache
+                {sourceLabel && (
+                  <span className="ml-auto inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    <QrCode className="w-3 h-3" />
+                    {sourceLabel}
                   </span>
                 )}
               </div>
