@@ -1,0 +1,31 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Survey {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  slug        String       @unique
+  questions   String       // JSON string of Question[]
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  submissions Submission[]
+}
+
+model Submission {
+  id                  String   @id // Client-generated UUID for idempotency
+  surveyId            String
+  survey              Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers             String   // JSON string of { [questionId]: answer }
+  submittedAtClient   DateTime
+  syncedAt            DateTime @default(now())
+  isOfflineSubmission Boolean  @default(false)
+  createdAt           DateTime @default(now())
+}
