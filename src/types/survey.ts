@@ -23,6 +23,8 @@ export interface SurveyData {
   description?: string | null;
   slug: string;
   questions: Question[];
+  roles?: string[]; // Allowed roles e.g. ["Customer", "Employee", "Visitor"]
+  isDraft?: boolean;
   isActive: boolean;
   createdAt?: string;
   _count?: {
@@ -33,6 +35,8 @@ export interface SurveyData {
 export interface SubmissionData {
   id: string;
   surveyId: string;
+  respondentName?: string | null;
+  respondentRole?: string | null;
   answers: Record<string, any>;
   submittedAtClient: string;
   syncedAt?: string;

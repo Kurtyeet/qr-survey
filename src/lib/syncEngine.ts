@@ -2,11 +2,18 @@ import { db, OfflineSubmission } from './db';
 import { SurveyData } from '@/types/survey';
 
 // Save survey draft to IndexedDB as user types
-export async function saveDraft(surveyId: string, answers: Record<string, any>) {
+export async function saveDraft(
+  surveyId: string,
+  answers: Record<string, any>,
+  respondentName?: string,
+  respondentRole?: string
+) {
   try {
     await db.drafts.put({
       surveyId,
       answers,
+      respondentName,
+      respondentRole,
       updatedAt: Date.now(),
     });
   } catch (error) {
@@ -15,10 +22,18 @@ export async function saveDraft(surveyId: string, answers: Record<string, any>) 
 }
 
 // Get saved draft for a survey
-export async function getDraft(surveyId: string): Promise<Record<string, any> | null> {
+export async function getDraft(
+  surveyId: string
+): Promise<{ answers: Record<string, any>; respondentName?: string; respondentRole?: string } | null> {
   try {
     const draft = await db.drafts.get(surveyId);
-    return draft ? draft.answers : null;
+    return draft
+      ? {
+          answers: draft.answers,
+          respondentName: draft.respondentName,
+          respondentRole: draft.respondentRole,
+        }
+      : null;
   } catch (error) {
     console.error('Failed to read draft from IndexedDB:', error);
     return null;
@@ -61,7 +76,9 @@ export async function getCachedSurvey(surveyId: string): Promise<SurveyData | nu
 // Queue a new survey submission (works offline or online)
 export async function queueSubmission(
   surveyId: string,
-  answers: Record<string, any>
+  answers: Record<string, any>,
+  respondentName?: string,
+  respondentRole?: string
 ): Promise<string> {
   const id = typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
@@ -70,6 +87,8 @@ export async function queueSubmission(
   const submission: OfflineSubmission = {
     id,
     surveyId,
+    respondentName,
+    respondentRole,
     answers,
     submittedAtClient: new Date().toISOString(),
     status: 'pending',
@@ -110,6 +129,8 @@ export async function syncPendingSubmissions(surveyId?: string): Promise<{ synce
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             submissionId: item.id,
+            respondentName: item.respondentName,
+            respondentRole: item.respondentRole,
             answers: item.answers,
             submittedAtClient: item.submittedAtClient,
             isOfflineSubmission: true,

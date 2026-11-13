@@ -15,6 +15,7 @@ export async function GET() {
     const formatted = surveys.map((s) => ({
       ...s,
       questions: JSON.parse(s.questions),
+      roles: s.roles ? JSON.parse(s.roles) : undefined,
     }));
 
     return NextResponse.json(formatted);
@@ -27,7 +28,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, description, questions } = body;
+    const { title, description, questions, roles, isDraft } = body;
 
     if (!title || !questions || !Array.isArray(questions)) {
       return NextResponse.json({ error: 'Title and questions array are required' }, { status: 400 });
@@ -53,6 +54,8 @@ export async function POST(request: Request) {
         description: description || null,
         slug,
         questions: JSON.stringify(questions),
+        roles: roles && Array.isArray(roles) ? JSON.stringify(roles) : null,
+        isDraft: Boolean(isDraft),
       },
     });
 
@@ -60,6 +63,7 @@ export async function POST(request: Request) {
       {
         ...survey,
         questions: JSON.parse(survey.questions),
+        roles: survey.roles ? JSON.parse(survey.roles) : undefined,
       },
       { status: 201 }
     );

@@ -7,7 +7,14 @@ export async function POST(
 ) {
   try {
     const body = await request.json();
-    const { submissionId, answers, submittedAtClient, isOfflineSubmission } = body;
+    const {
+      submissionId,
+      answers,
+      respondentName,
+      respondentRole,
+      submittedAtClient,
+      isOfflineSubmission,
+    } = body;
 
     if (!submissionId || !answers) {
       return NextResponse.json({ error: 'Missing submissionId or answers' }, { status: 400 });
@@ -44,6 +51,8 @@ export async function POST(
       data: {
         id: submissionId,
         surveyId: survey.id,
+        respondentName: respondentName || null,
+        respondentRole: respondentRole || null,
         answers: typeof answers === 'string' ? answers : JSON.stringify(answers),
         submittedAtClient: submittedAtClient ? new Date(submittedAtClient) : new Date(),
         syncedAt: new Date(),

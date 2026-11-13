@@ -25,6 +25,8 @@ export async function GET(
     // CSV Headers
     const headers = [
       'Submission ID',
+      'Respondent Name',
+      'Respondent Role',
       'Submitted At (Client)',
       'Synced At (Server)',
       'Offline Saved',
@@ -55,6 +57,8 @@ export async function GET(
 
       return [
         escapeCsv(sub.id),
+        escapeCsv(sub.respondentName || 'Anonymous'),
+        escapeCsv(sub.respondentRole || 'General'),
         escapeCsv(sub.submittedAtClient.toISOString()),
         escapeCsv(sub.syncedAt.toISOString()),
         escapeCsv(sub.isOfflineSubmission ? 'Yes' : 'No'),

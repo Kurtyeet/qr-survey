@@ -3,11 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
 import { db, OfflineSubmission } from '@/lib/db';
-import { syncPendingSubmissions } from '@/lib/syncEngine';
+import { packSubmission } from '@/lib/surveyPacker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import NetworkBanner from '@/components/NetworkBanner';
-import { CheckCircle2, Clock, CloudUpload, ArrowRight, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Clock, CloudUpload, ArrowRight, QrCode, User, Briefcase } from 'lucide-react';
 
 export default function ConfirmationPage() {
   const params = useParams();
@@ -18,7 +19,6 @@ export default function ConfirmationPage() {
 
   const { isOnline } = useNetworkStatus();
   const [submission, setSubmission] = useState<OfflineSubmission | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (!submissionId) return;
@@ -35,67 +35,89 @@ export default function ConfirmationPage() {
     return () => clearInterval(timer);
   }, [submissionId]);
 
-  const handleSyncNow = async () => {
-    if (!isOnline || isSyncing) return;
-    setIsSyncing(true);
-    try {
-      await syncPendingSubmissions(surveyId);
-      if (submissionId) {
-        const updated = await db.submissionsQueue.get(submissionId);
-        if (updated) setSubmission(updated);
-      }
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const isSynced = submission?.status === 'synced';
+  const qrTransferPayload = submission ? packSubmission(submission) : '';
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-100 flex flex-col pb-12">
       <NetworkBanner surveyId={surveyId} />
 
       <main className="flex-1 max-w-sm w-full mx-auto px-4 py-8 flex flex-col justify-center">
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-card-md p-8 text-center animate-slide-up">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-card-md p-6 sm:p-8 text-center animate-slide-up">
           {/* Status icon */}
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5 transition-colors ${
-            isSynced ? 'bg-emerald-100' : 'bg-amber-100'
-          }`}>
-            {isSynced
-              ? <CheckCircle2 className="w-9 h-9 text-emerald-600" strokeWidth={1.5} />
-              : <CloudUpload className="w-8 h-8 text-amber-600 animate-pulse" strokeWidth={1.5} />
-            }
+          <div
+            className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors ${
+              isSynced ? 'bg-emerald-100' : 'bg-amber-100'
+            }`}
+          >
+            {isSynced ? (
+              <CheckCircle2 className="w-8 h-8 text-emerald-600" strokeWidth={1.5} />
+            ) : (
+              <CloudUpload className="w-7 h-7 text-amber-600 animate-pulse" strokeWidth={1.5} />
+            )}
           </div>
 
-          <h1 className="text-xl font-bold text-slate-900 mb-2">
-            {isSynced ? 'Response uploaded!' : 'Saved to your phone!'}
+          <h1 className="text-xl font-bold text-slate-900 mb-1.5">
+            {isSynced ? 'Response Uploaded!' : 'Response Saved on Device!'}
           </h1>
 
-          <p className="text-sm text-slate-500 leading-relaxed mb-6 max-w-xs mx-auto">
+          <p className="text-xs text-slate-500 leading-relaxed mb-5 max-w-xs mx-auto">
             {isSynced
-              ? 'Your response has been securely transmitted and recorded in the database.'
-              : 'Your answers are safely stored on this device and will upload automatically when internet reconnects.'}
+              ? 'Thank you! Your survey response has been transmitted directly to the server.'
+              : 'Your answers are safely recorded offline. The admin can scan the QR code below to collect it right now, or your phone will auto-upload when internet reconnects.'}
           </p>
 
+          {/* Respondent detail chip */}
+          {submission && (submission.respondentName || submission.respondentRole) && (
+            <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3 mb-5 text-left text-xs text-blue-900 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <User className="w-3.5 h-3.5 text-blue-600" />
+                {submission.respondentName || 'Anonymous'}
+              </span>
+              {submission.respondentRole && (
+                <span className="bg-white border border-blue-200 px-2 py-0.5 rounded text-[11px] font-medium text-blue-700">
+                  {submission.respondentRole}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* ── OFFLINE PEER-TO-PEER QR CODE TRANSFER ── */}
+          {qrTransferPayload && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 mb-2">
+                <QrCode className="w-4 h-4 text-blue-600" />
+                <span>Admin / Surveyor Transfer QR</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-3 leading-snug">
+                In an offline area? Have your admin/surveyor scan this screen with their app to collect this survey!
+              </p>
+
+              <div className="bg-white p-3 border-2 border-slate-900 rounded-xl inline-block shadow-sm">
+                <QRCodeSVG value={qrTransferPayload} size={180} level="M" />
+              </div>
+            </div>
+          )}
+
           {/* Status detail */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2.5 mb-6">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-left space-y-2 mb-5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-500 font-medium">Submission ID</span>
-              <span className="font-mono text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded text-[11px] truncate max-w-[160px]">
+              <span className="font-mono text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded text-[10px] truncate max-w-[150px]">
                 {submissionId ?? '—'}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500 font-medium">Sync status</span>
+              <span className="text-slate-500 font-medium">Auto-Upload</span>
               {isSynced ? (
-                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-100 px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">
                   <CheckCircle2 className="w-3 h-3" />
-                  Synced
+                  Sent to Admin
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-amber-800 font-semibold bg-amber-100 px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center gap-1 text-amber-800 font-semibold bg-amber-100 px-2 py-0.5 rounded-full text-[10px]">
                   <Clock className="w-3 h-3" />
-                  Queued on device
+                  Queued Locally
                 </span>
               )}
             </div>
@@ -108,22 +130,10 @@ export default function ConfirmationPage() {
           </div>
 
           {/* Actions */}
-          <div className="space-y-3">
-            {!isSynced ? (
-              <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-800 flex items-center justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                <span>Auto-upload active — sends to admin automatically once online.</span>
-              </div>
-            ) : (
-              <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Successfully sent to admin!</span>
-              </div>
-            )}
-
+          <div className="space-y-2.5">
             <Link
               href={`/s/${surveyId}`}
-              className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-brand-sm"
+              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-brand-sm"
             >
               Take Another Survey
               <ArrowRight className="w-4 h-4" />

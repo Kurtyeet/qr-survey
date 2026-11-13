@@ -13,6 +13,8 @@ model Survey {
   description String?
   slug        String       @unique
   questions   String       // JSON string of Question[]
+  roles       String?      // JSON string of string[] e.g. ["Customer", "Employee", "Visitor"]
+  isDraft     Boolean      @default(false)
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -23,6 +25,8 @@ model Submission {
   id                  String   @id // Client-generated UUID for idempotency
   surveyId            String
   survey              Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  respondentName      String?
+  respondentRole      String?
   answers             String   // JSON string of { [questionId]: answer }
   submittedAtClient   DateTime
   syncedAt            DateTime @default(now())

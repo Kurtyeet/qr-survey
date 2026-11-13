@@ -16,6 +16,7 @@ import {
   LogOut,
   RefreshCw,
   Zap,
+  FileEdit,
 } from 'lucide-react';
 
 export default function AdminSurveysPage() {
@@ -162,18 +163,26 @@ export default function AdminSurveysPage() {
                 <div className="p-5 flex-1">
                   {/* Top row */}
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${
-                      survey.isActive
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      {survey.isActive ? (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                      ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block" />
+                    <div className="flex items-center gap-1.5">
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${
+                        survey.isActive
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {survey.isActive ? (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block" />
+                        )}
+                        {survey.isActive ? 'Active' : 'Paused'}
+                      </span>
+
+                      {survey.isDraft && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
+                          Draft
+                        </span>
                       )}
-                      {survey.isActive ? 'Active' : 'Paused'}
-                    </span>
+                    </div>
                     <span className="text-[11px] text-slate-400 font-mono">/s/{survey.slug}</span>
                   </div>
 
@@ -204,6 +213,14 @@ export default function AdminSurveysPage() {
                   >
                     <QrCode className="w-3.5 h-3.5" />
                     QR &amp; Results
+                  </Link>
+
+                  <Link
+                    href={`/admin/new?edit=${survey.id}`}
+                    className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition"
+                    title="Edit survey"
+                  >
+                    <FileEdit className="w-4 h-4" />
                   </Link>
 
                   <Link

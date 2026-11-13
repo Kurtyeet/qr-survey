@@ -92,8 +92,28 @@ export default function OfflineQrScannerModal({ isOpen, onClose }: OfflineQrScan
     };
   }, [isOpen]);
 
-  const handleCodeDetected = (rawUrl: string) => {
+  const handleCodeDetected = async (rawUrl: string) => {
     onClose();
+
+    // Check if it's a respondent completed survey transfer QR code
+    if (rawUrl.startsWith('QRSUB:')) {
+      const { unpackSubmission } = await import('@/lib/surveyPacker');
+      const { db } = await import('@/lib/db');
+      const { syncPendingSubmissions } = await import('@/lib/syncEngine');
+
+      const unpacked = unpackSubmission(rawUrl);
+      if (unpacked) {
+        await db.submissionsQueue.put(unpacked);
+        alert(
+          `✅ Collected survey response from ${unpacked.respondentName || 'Respondent'} (${unpacked.respondentRole || 'General'})!\n\nStored locally on your device. It will automatically upload to the server whenever internet is detected.`
+        );
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          syncPendingSubmissions().catch(console.error);
+        }
+        return;
+      }
+    }
+
     try {
       // If it's a URL to our app (e.g. https://.../s/cmwc... or /s/...)
       const url = new URL(rawUrl, window.location.origin);

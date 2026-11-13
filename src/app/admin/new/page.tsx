@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Question, QuestionType } from '@/types/survey';
 import {
@@ -17,6 +17,9 @@ import {
   AlignLeft,
   Type,
   CheckSquare,
+  Users,
+  Send,
+  FileEdit,
 } from 'lucide-react';
 
 const QUESTION_TYPE_LABELS: Record<QuestionType, { label: string; icon: any }> = {
@@ -28,11 +31,21 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, { label: string; icon: any }> =
   dropdown: { label: 'Dropdown Select', icon: ListFilter },
 };
 
-export default function NewSurveyPage() {
+function SurveyBuilderContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams?.get('edit');
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [roles, setRoles] = useState<string[]>([
+    'Customer',
+    'Employee',
+    'Visitor',
+    'Other',
+  ]);
+  const [newRoleInput, setNewRoleInput] = useState('');
+  const [isDraft, setIsDraft] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([
     {
       id: 'q_1',
@@ -56,8 +69,34 @@ export default function NewSurveyPage() {
       required: false,
     },
   ]);
+  const [loadingInitial, setLoadingInitial] = useState(Boolean(editId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // If editing an existing survey, load its existing values
+  useEffect(() => {
+    if (!editId) return;
+
+    async function loadExisting() {
+      try {
+        const res = await fetch(`/api/admin/surveys/${editId}`);
+        if (res.ok) {
+          const s = await res.json();
+          setTitle(s.title || '');
+          setDescription(s.description || '');
+          if (s.questions && Array.isArray(s.questions)) setQuestions(s.questions);
+          if (s.roles && Array.isArray(s.roles)) setRoles(s.roles);
+          setIsDraft(Boolean(s.isDraft));
+        }
+      } catch (e) {
+        console.error('Failed to load survey for edit:', e);
+      } finally {
+        setLoadingInitial(false);
+      }
+    }
+
+    loadExisting();
+  }, [editId]);
 
   const addQuestion = (type: QuestionType = 'short_text') => {
     const newQ: Question = {
@@ -65,9 +104,10 @@ export default function NewSurveyPage() {
       title: '',
       type,
       required: false,
-      options: type === 'single_choice' || type === 'multi_choice' || type === 'dropdown'
-        ? ['Option 1', 'Option 2']
-        : undefined,
+      options:
+        type === 'single_choice' || type === 'multi_choice' || type === 'dropdown'
+          ? ['Option 1', 'Option 2']
+          : undefined,
     };
     setQuestions((prev) => [...prev, newQ]);
   };
@@ -103,7 +143,7 @@ export default function NewSurveyPage() {
 
   const addOption = (questionIdx: number) => {
     const q = questions[questionIdx];
-    const opts = q.options ? [...q.options, `Option ${(q.options.length + 1)}`] : ['Option 1'];
+    const opts = q.options ? [...q.options, `Option ${q.options.length + 1}`] : ['Option 1'];
     updateQuestion(questionIdx, { options: opts });
   };
 
@@ -122,8 +162,20 @@ export default function NewSurveyPage() {
     updateQuestion(questionIdx, { options: opts });
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const addRole = () => {
+    if (!newRoleInput.trim()) return;
+    const trimmed = newRoleInput.trim();
+    if (!roles.includes(trimmed)) {
+      setRoles([...roles, trimmed]);
+    }
+    setNewRoleInput('');
+  };
+
+  const removeRole = (index: number) => {
+    setRoles(roles.filter((_, i) => i !== index));
+  };
+
+  const handleSave = async (asDraft: boolean) => {
     if (!title.trim()) {
       setError('Please provide a survey title');
       return;
@@ -133,7 +185,6 @@ export default function NewSurveyPage() {
       return;
     }
 
-    // Verify all questions have titles
     for (let i = 0; i < questions.length; i++) {
       if (!questions[i].title.trim()) {
         setError(`Question #${i + 1} is missing a question prompt.`);
@@ -144,30 +195,54 @@ export default function NewSurveyPage() {
     setSaving(true);
     setError(null);
 
-    try {
-      const res = await fetch('/api/admin/surveys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          description,
-          questions,
-        }),
-      });
+    const payload = {
+      title,
+      description,
+      questions,
+      roles,
+      isDraft: asDraft,
+    };
 
-      if (res.ok) {
-        const survey = await res.json();
-        router.push(`/admin/surveys/${survey.id}`);
+    try {
+      if (editId) {
+        // Update existing survey
+        const res = await fetch(`/api/admin/surveys/${editId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          router.push(`/admin/surveys/${editId}`);
+          return;
+        }
       } else {
-        const err = await res.json();
-        setError(err.error || 'Failed to save survey');
+        // Create new survey
+        const res = await fetch('/api/admin/surveys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const survey = await res.json();
+          router.push(`/admin/surveys/${survey.id}`);
+          return;
+        }
       }
+      setError('Failed to save survey. Please check inputs.');
     } catch (e) {
       setError('Network failure while saving survey');
     } finally {
       setSaving(false);
     }
   };
+
+  if (loadingInitial) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+        Loading survey details…
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 pb-16">
@@ -182,14 +257,25 @@ export default function NewSurveyPage() {
             Back to Surveys
           </Link>
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Save & Generate QR'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSave(true)}
+              disabled={saving}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              <FileEdit className="w-4 h-4" />
+              <span>Save as Draft</span>
+            </button>
+
+            <button
+              onClick={() => handleSave(false)}
+              disabled={saving}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" />
+              <span>{saving ? 'Saving...' : 'Publish Survey'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -202,7 +288,18 @@ export default function NewSurveyPage() {
 
         {/* Survey Details Form */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm mb-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-4">Survey Details</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-900">
+              {editId ? 'Edit Survey' : 'Survey Details'}
+            </h2>
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                isDraft ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+              }`}
+            >
+              {isDraft ? 'Draft Status' : 'Published Status'}
+            </span>
+          </div>
 
           <div className="space-y-4">
             <div>
@@ -213,7 +310,7 @@ export default function NewSurveyPage() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Customer Satisfaction & Feedback"
+                placeholder="e.g. Community Health Survey or Field Assessment"
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
               />
             </div>
@@ -226,9 +323,61 @@ export default function NewSurveyPage() {
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Brief intro for respondents when they scan your QR code..."
+                placeholder="Brief intro for respondents when they open your QR code..."
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
               />
+            </div>
+
+            {/* ── RESPONDENT ROLES BUILDER ── */}
+            <div className="pt-3 border-t border-slate-100">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-blue-600" />
+                Allowed Respondent Roles (Choose role buttons)
+              </label>
+              <p className="text-xs text-slate-400 mb-2.5">
+                Respondents will select one of these roles before answering questions.
+              </p>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                {roles.map((r, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-800 px-3 py-1 rounded-xl text-xs font-semibold"
+                  >
+                    <span>{r}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeRole(idx)}
+                      className="text-blue-400 hover:text-red-500 transition"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex gap-2 max-w-xs">
+                <input
+                  type="text"
+                  value={newRoleInput}
+                  onChange={(e) => setNewRoleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addRole();
+                    }
+                  }}
+                  placeholder="Add role (e.g. Teacher, Volunteer)"
+                  className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={addRole}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold"
+                >
+                  Add
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -401,5 +550,19 @@ export default function NewSurveyPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function SurveyBuilderPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+          Loading survey builder…
+        </div>
+      }
+    >
+      <SurveyBuilderContent />
+    </Suspense>
   );
 }

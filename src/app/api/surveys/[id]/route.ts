@@ -20,12 +20,21 @@ export async function GET(
       return NextResponse.json({ error: 'Survey not found or inactive' }, { status: 404 });
     }
 
+    if (survey.isDraft) {
+      return NextResponse.json(
+        { error: 'This survey is currently in draft mode and not yet published.' },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json({
       id: survey.id,
       title: survey.title,
       description: survey.description,
       slug: survey.slug,
       questions: JSON.parse(survey.questions),
+      roles: survey.roles ? JSON.parse(survey.roles) : undefined,
+      isDraft: survey.isDraft,
       isActive: survey.isActive,
     });
   } catch (error) {

@@ -3,6 +3,8 @@ import { SurveyData } from '@/types/survey';
 
 export interface DraftAnswer {
   surveyId: string;
+  respondentName?: string;
+  respondentRole?: string;
   answers: Record<string, any>;
   updatedAt: number;
 }
@@ -10,6 +12,8 @@ export interface DraftAnswer {
 export interface OfflineSubmission {
   id: string; // Client UUID for idempotency
   surveyId: string;
+  respondentName?: string;
+  respondentRole?: string;
   answers: Record<string, any>;
   submittedAtClient: string;
   status: 'pending' | 'syncing' | 'synced';
