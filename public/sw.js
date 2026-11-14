@@ -1,4 +1,4 @@
-const CACHE_NAME = 'offline-qr-survey-v2';
+const CACHE_NAME = 'offline-qr-survey-v3';
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
@@ -7,8 +7,29 @@ const PRECACHE_URLS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_URLS);
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(PRECACHE_URLS);
+      try {
+        // Automatically discover and precache all static JS and CSS bundles for /s/offline
+        const res = await fetch('/s/offline');
+        if (res.ok) {
+          const html = await res.text();
+          const matches = html.match(/\/(_next\/static\/[^"'\s>)]+)/g) || [];
+          const uniqueAssets = Array.from(new Set(matches));
+          await Promise.all(
+            uniqueAssets.map(async (asset) => {
+              try {
+                const assetRes = await fetch(asset);
+                if (assetRes.ok) {
+                  await cache.put(asset, assetRes);
+                }
+              } catch (_) {}
+            })
+          );
+        }
+      } catch (e) {
+        console.warn('[SW] Offline asset pre-warming failed:', e);
+      }
     }).then(() => self.skipWaiting())
   );
 });
@@ -67,8 +88,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle navigation requests (pages like /s/[id], /s/offline, /admin)
-  if (request.mode === 'navigate') {
+  // Handle navigation requests and Next.js RSC requests (e.g. ?_rsc=... or headers.get('RSC'))
+  const isRSC = request.headers.get('RSC') === '1' || url.searchParams.has('_rsc');
+  if (request.mode === 'navigate' || isRSC) {
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -98,7 +120,7 @@ self.addEventListener('fetch', (event) => {
               if (shell) return shell;
             }
 
-            // 3. Fallback: lightweight redirect to /s/offline so it never leaks home/admin data
+            // 3. Fallback: lightweight redirect to /s/offline
             return new Response(
               `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Opening Survey...</title><script>window.location.replace('/s/offline' + window.location.search);</script></head><body style="font-family:sans-serif;text-align:center;padding:40px;"><h2>Loading Offline Survey...</h2><p>Please wait a moment while we load your survey.</p></body></html>`,
               { headers: { 'Content-Type': 'text/html' } }

@@ -95,7 +95,7 @@ export default function OfflineQrScannerModal({ isOpen, onClose }: OfflineQrScan
   const handleCodeDetected = async (rawUrl: string) => {
     onClose();
 
-    // Check if it's a respondent completed survey transfer QR code
+    // 1. Check if it's a respondent completed survey transfer QR code
     if (rawUrl.startsWith('QRSUB:')) {
       const { unpackSubmission } = await import('@/lib/surveyPacker');
       const { db } = await import('@/lib/db');
@@ -114,18 +114,48 @@ export default function OfflineQrScannerModal({ isOpen, onClose }: OfflineQrScan
       }
     }
 
+    // 2. Check if it's a survey QR code (extract ?d= payload directly)
     try {
-      // If it's a URL to our app (e.g. https://.../s/cmwc... or /s/...)
-      const url = new URL(rawUrl, window.location.origin);
-      if (url.pathname.startsWith('/s/')) {
-        router.push(`${url.pathname}${url.search}`);
-        return;
+      const { unpackSurvey } = await import('@/lib/surveyPacker');
+      const { cacheSurvey } = await import('@/lib/syncEngine');
+
+      let dParam: string | null = null;
+      let targetSurveyId: string | null = null;
+
+      if (rawUrl.includes('?d=') || rawUrl.includes('&d=')) {
+        try {
+          const dummyUrl = new URL(rawUrl, window.location.origin);
+          dParam = dummyUrl.searchParams.get('d');
+          const match = dummyUrl.pathname.match(/\/s\/([^\/?#]+)/);
+          if (match && match[1]) targetSurveyId = match[1];
+        } catch {
+          const match = rawUrl.match(/[?&]d=([^&#]+)/);
+          if (match && match[1]) dParam = match[1];
+        }
       }
-      // If full external URL, navigate
+
+      if (dParam) {
+        const unpacked = unpackSurvey(dParam);
+        if (unpacked) {
+          await cacheSurvey(unpacked);
+          // Navigate to the offline survey shell directly without requiring network
+          window.location.href = `/s/${unpacked.id || targetSurveyId || 'offline'}?d=${dParam}`;
+          return;
+        }
+      }
+
+      // 3. Fallback: navigate locally
+      try {
+        const url = new URL(rawUrl, window.location.origin);
+        if (url.pathname.startsWith('/s/')) {
+          window.location.href = `${url.pathname}${url.search}`;
+          return;
+        }
+      } catch {}
+
       window.location.href = rawUrl;
-    } catch (e) {
-      // If raw path
-      router.push(rawUrl);
+    } catch {
+      window.location.href = rawUrl;
     }
   };
 

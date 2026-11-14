@@ -4,6 +4,7 @@ import { OfflineSubmission } from '@/lib/db';
 /**
  * Compact URL-safe packer for offline QR codes.
  * Stores survey ID, title, description, roles, and questions directly in the QR code.
+ * Uses Base64URL encoding so that characters like '+', '/', and '=' never get corrupted by URL parsers.
  */
 export function packSurvey(survey: SurveyData): string {
   const compact = {
@@ -22,25 +23,32 @@ export function packSurvey(survey: SurveyData): string {
   };
 
   const jsonStr = JSON.stringify(compact);
+  const b64 = typeof window !== 'undefined'
+    ? btoa(unescape(encodeURIComponent(jsonStr)))
+    : Buffer.from(jsonStr).toString('base64');
 
-  if (typeof window !== 'undefined') {
-    return encodeURIComponent(btoa(unescape(encodeURIComponent(jsonStr))));
-  }
-  return encodeURIComponent(Buffer.from(jsonStr).toString('base64'));
+  // Convert to URL-safe Base64URL
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**
  * Unpacks survey data from the URL query string `?d=...`
+ * Handles Base64URL, standard Base64, and repairs '+' turned into spaces by URLSearchParams.
  */
 export function unpackSurvey(encodedData: string): SurveyData | null {
   try {
-    const raw = decodeURIComponent(encodedData);
-    let jsonStr: string;
+    let clean = decodeURIComponent(encodedData).trim();
+    // Repair spaces, restore standard Base64 from Base64URL
+    clean = clean.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+    while (clean.length % 4 !== 0) {
+      clean += '=';
+    }
 
+    let jsonStr: string;
     if (typeof window !== 'undefined') {
-      jsonStr = decodeURIComponent(escape(atob(raw)));
+      jsonStr = decodeURIComponent(escape(atob(clean)));
     } else {
-      jsonStr = Buffer.from(raw, 'base64').toString('utf-8');
+      jsonStr = Buffer.from(clean, 'base64').toString('utf-8');
     }
 
     const compact = JSON.parse(jsonStr);
@@ -52,7 +60,7 @@ export function unpackSurvey(encodedData: string): SurveyData | null {
       slug: compact.i,
       roles: compact.k && compact.k.length > 0 ? compact.k : undefined,
       isActive: true,
-      questions: compact.q.map((q: any) => ({
+      questions: (compact.q || []).map((q: any) => ({
         id: q.i,
         title: q.t,
         description: q.d || undefined,
@@ -83,7 +91,8 @@ export function packSubmission(sub: OfflineSubmission): string {
   const b64 = typeof window !== 'undefined'
     ? btoa(unescape(encodeURIComponent(jsonStr)))
     : Buffer.from(jsonStr).toString('base64');
-  return `QRSUB:${b64}`;
+  const b64url = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `QRSUB:${b64url}`;
 }
 
 /**
@@ -92,7 +101,12 @@ export function packSubmission(sub: OfflineSubmission): string {
 export function unpackSubmission(rawString: string): OfflineSubmission | null {
   try {
     if (!rawString.startsWith('QRSUB:')) return null;
-    const b64 = rawString.substring(6);
+    let b64 = rawString.substring(6).trim();
+    b64 = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4 !== 0) {
+      b64 += '=';
+    }
+
     const jsonStr = typeof window !== 'undefined'
       ? decodeURIComponent(escape(atob(b64)))
       : Buffer.from(b64, 'base64').toString('utf-8');
