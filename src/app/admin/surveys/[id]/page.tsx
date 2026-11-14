@@ -25,7 +25,9 @@ import {
   Sparkles,
   FileEdit,
   User,
+  Camera,
 } from 'lucide-react';
+import OfflineQrScannerModal from '@/components/OfflineQrScannerModal';
 
 export default function SurveyDetailPage() {
   const params = useParams();
@@ -37,6 +39,7 @@ export default function SurveyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   const [surveyUrl, setSurveyUrl] = useState('');
@@ -141,6 +144,16 @@ export default function SurveyDetailPage() {
           </Link>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setScannerOpen(true)}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-sm transition"
+              title="Scan respondent transfer QR code"
+            >
+              <Camera className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Scan Respondent QR</span>
+              <span className="sm:hidden">Scan QR</span>
+            </button>
+
             <Link
               href={`/admin/new?edit=${surveyId}`}
               className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition"
@@ -457,6 +470,14 @@ export default function SurveyDetailPage() {
           )}
         </div>
       </main>
+
+      <OfflineQrScannerModal
+        isOpen={scannerOpen}
+        onClose={() => {
+          setScannerOpen(false);
+          loadData();
+        }}
+      />
     </div>
   );
 }

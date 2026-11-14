@@ -17,12 +17,15 @@ import {
   RefreshCw,
   Zap,
   FileEdit,
+  Camera,
 } from 'lucide-react';
+import OfflineQrScannerModal from '@/components/OfflineQrScannerModal';
 
 export default function AdminSurveysPage() {
   const router = useRouter();
   const [surveys, setSurveys] = useState<SurveyData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const fetchSurveys = async () => {
     setLoading(true);
@@ -81,6 +84,15 @@ export default function AdminSurveysPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setScannerOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold shadow-sm transition"
+              title="Scan respondent transfer QR code"
+            >
+              <Camera className="w-4 h-4" />
+              <span className="hidden sm:inline">Scan Respondent QR</span>
+              <span className="sm:hidden">Scan QR</span>
+            </button>
             <Link
               href="/admin/new"
               className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold shadow-brand-sm transition"
@@ -256,6 +268,14 @@ export default function AdminSurveysPage() {
           </div>
         )}
       </main>
+
+      <OfflineQrScannerModal
+        isOpen={scannerOpen}
+        onClose={() => {
+          setScannerOpen(false);
+          fetchSurveys();
+        }}
+      />
     </div>
   );
 }

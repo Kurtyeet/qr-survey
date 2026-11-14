@@ -4,7 +4,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Question, SurveyData } from '@/types/survey';
 import { saveDraft, getDraft, queueSubmission, cacheSurvey } from '@/lib/syncEngine';
-import { Star, AlertCircle, Save, Send, CheckCircle2, User, Briefcase, WifiOff } from 'lucide-react';
+import { packSubmission } from '@/lib/surveyPacker';
+import { db } from '@/lib/db';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+  Star,
+  AlertCircle,
+  Save,
+  Send,
+  CheckCircle2,
+  User,
+  Briefcase,
+  WifiOff,
+  QrCode,
+  X,
+  Clock,
+  ArrowRight,
+} from 'lucide-react';
 
 interface SurveyFormProps {
   survey: SurveyData;
@@ -19,6 +35,12 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [offlineToast, setOfflineToast] = useState(false);
+  const [transferModal, setTransferModal] = useState<{
+    payload: string;
+    subId: string;
+    name: string;
+    role: string;
+  } | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const availableRoles =
@@ -39,7 +61,7 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
         setLastSavedTime('Draft restored from device');
       }
     });
-  }, [survey]);
+  }, [survey.id]);
 
   // Auto-save helper
   const triggerAutoSave = (
@@ -124,8 +146,8 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Option 1: Standard Submit (auto-uploads when online)
+  const handleStandardSubmit = async () => {
     if (!validateForm()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -142,11 +164,14 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
         respondentRole
       );
 
+      // Clean up draft since it is completed
+      await db.drafts.delete(survey.id).catch(console.warn);
+
       if (isOffline) {
         setOfflineToast(true);
         setTimeout(() => {
           router.push(`/s/${survey.id}/confirmation?subId=${submissionId}`);
-        }, 1500);
+        }, 1200);
       } else {
         router.push(`/s/${survey.id}/confirmation?subId=${submissionId}`);
       }
@@ -157,8 +182,53 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
     }
   };
 
+  // Option 2: Generate Transfer QR Code immediately
+  const handleGenerateTransferQr = async () => {
+    if (!validateForm()) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const submissionId = await queueSubmission(
+        survey.id,
+        answers,
+        respondentName.trim(),
+        respondentRole
+      );
+
+      // Clean up draft
+      await db.drafts.delete(survey.id).catch(console.warn);
+
+      const subObj = {
+        id: submissionId,
+        surveyId: survey.id,
+        respondentName: respondentName.trim(),
+        respondentRole,
+        answers,
+        submittedAtClient: new Date().toISOString(),
+        status: 'pending' as const,
+        attempts: 0,
+      };
+
+      const payload = packSubmission(subObj);
+      setTransferModal({
+        payload,
+        subId: submissionId,
+        name: respondentName.trim(),
+        role: respondentRole,
+      });
+      setIsSubmitting(false);
+    } catch (error) {
+      console.error('Failed to generate transfer QR:', error);
+      alert('Could not generate transfer QR code. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="space-y-4">
       {/* Offline Toast Notification upon submitting offline */}
       {offlineToast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4 animate-slide-up">
@@ -167,7 +237,7 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
             <div>
               <p className="font-bold text-xs">No Internet Connection!</p>
               <p className="text-[11px] text-amber-100">
-                Your survey is safely saved on this device. Generating your offline transfer QR code...
+                Your survey is safely saved on this device and will auto-upload when internet reconnects.
               </p>
             </div>
           </div>
@@ -256,35 +326,30 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
       {/* ── QUESTIONS LIST ── */}
       <div className="space-y-4">
         {survey.questions.map((q, idx) => {
-          const hasError = Boolean(validationErrors[q.id]);
           const currentVal = answers[q.id];
+          const hasError = !!validationErrors[q.id];
 
           return (
             <div
               key={q.id}
               className={`bg-white rounded-2xl border shadow-card p-5 transition-all ${
-                hasError
-                  ? 'border-red-300 ring-1 ring-red-300'
-                  : 'border-slate-200 hover:border-slate-300'
+                hasError ? 'border-red-300 ring-1 ring-red-300' : 'border-slate-200'
               }`}
             >
-              <div className="mb-4">
-                <label className="text-sm font-semibold text-slate-900 leading-snug flex items-start gap-2">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-blue-100 text-blue-700 text-[11px] font-bold shrink-0 mt-0.5">
-                    {idx + 1}
-                  </span>
-                  <span>
-                    {q.title}
-                    {q.required && <span className="text-red-500 ml-0.5">*</span>}
-                  </span>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <label className="text-sm font-semibold text-slate-800 leading-snug">
+                  <span className="text-slate-400 font-mono text-xs mr-1.5">{idx + 1}.</span>
+                  {q.title}
+                  {q.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
-                {q.description && (
-                  <p className="text-xs text-slate-500 mt-1.5 ml-7">{q.description}</p>
-                )}
               </div>
 
-              {/* Short text */}
-              {q.type === 'short_text' && (
+              {q.description && (
+                <p className="text-xs text-slate-500 mb-3 leading-relaxed">{q.description}</p>
+              )}
+
+              {/* Short Text Input */}
+              {(q.type === 'short_text' || (q.type as string) === 'text') && (
                 <input
                   type="text"
                   value={currentVal || ''}
@@ -294,78 +359,85 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
                 />
               )}
 
-              {/* Long text */}
-              {q.type === 'long_text' && (
+              {/* Long Textarea */}
+              {(q.type === 'long_text' || (q.type as string) === 'textarea') && (
                 <textarea
                   rows={3}
                   value={currentVal || ''}
                   onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                  placeholder="Type your response here…"
+                  placeholder="Your answer…"
                   className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 focus:bg-white transition placeholder:text-slate-400 resize-none"
                 />
               )}
 
-              {/* Single choice */}
-              {q.type === 'single_choice' && q.options && (
-                <div className="space-y-2">
+              {/* Radio (Choice pills) */}
+              {(q.type === 'single_choice' || (q.type as string) === 'radio') && q.options && (
+                <div className="space-y-2 pt-1">
                   {q.options.map((opt, optIdx) => {
                     const isSelected = currentVal === opt;
                     return (
                       <label
                         key={optIdx}
-                        className={`choice-pill ${isSelected ? 'selected' : ''}`}
+                        onClick={() => handleAnswerChange(q.id, opt)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-sm font-medium cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-blue-50/70 border-blue-500 text-blue-950 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
                       >
-                        <input
-                          type="radio"
-                          name={q.id}
-                          checked={isSelected}
-                          onChange={() => handleAnswerChange(q.id, opt)}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0"
-                        />
-                        <span className="flex-1">{opt}</span>
-                        {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
+                        <span
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition ${
+                            isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </span>
+                        <span className="flex-1 text-xs sm:text-sm">{opt}</span>
                       </label>
                     );
                   })}
                 </div>
               )}
 
-              {/* Multi choice */}
-              {q.type === 'multi_choice' && q.options && (
-                <div className="space-y-2">
+              {/* Checkbox (Multi-select pills) */}
+              {(q.type === 'multi_choice' || (q.type as string) === 'checkbox') && q.options && (
+                <div className="space-y-2 pt-1">
                   {q.options.map((opt, optIdx) => {
                     const selectedList: string[] = Array.isArray(currentVal) ? currentVal : [];
-                    const isChecked = selectedList.includes(opt);
-
+                    const isSelected = selectedList.includes(opt);
                     return (
                       <label
                         key={optIdx}
-                        className={`choice-pill ${isChecked ? 'selected' : ''}`}
                         onClick={() => {
-                          const next = isChecked
-                            ? selectedList.filter((i) => i !== opt)
+                          const updated = isSelected
+                            ? selectedList.filter((item) => item !== opt)
                             : [...selectedList, opt];
-                          handleAnswerChange(q.id, next);
+                          handleAnswerChange(q.id, updated);
                         }}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-sm font-medium cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-blue-50/70 border-blue-500 text-blue-950 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {}}
-                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0"
-                        />
-                        <span className="flex-1">{opt}</span>
-                        {isChecked && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
+                        <span
+                          className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
+                            isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                        </span>
+                        <span className="flex-1 text-xs sm:text-sm">{opt}</span>
                       </label>
                     );
                   })}
                 </div>
               )}
 
-              {/* Rating */}
+              {/* Rating (Star / Numeric) */}
               {q.type === 'rating' && (
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="pt-2">
+                  <div className="flex gap-2 justify-between">
                     {[1, 2, 3, 4, 5].map((star) => {
                       const isFilled = (currentVal || 0) >= star;
                       return (
@@ -373,10 +445,10 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
                           key={star}
                           type="button"
                           onClick={() => handleAnswerChange(q.id, star)}
-                          className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition-all ${
+                          className={`flex-1 py-3 flex flex-col items-center justify-center rounded-xl border transition ${
                             isFilled
-                              ? 'bg-amber-50 border-amber-400 text-amber-500'
-                              : 'bg-slate-50 border-slate-200 text-slate-300 hover:border-slate-300 hover:bg-slate-100'
+                              ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-sm'
+                              : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:border-slate-300'
                           }`}
                         >
                           <Star
@@ -422,10 +494,12 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
         })}
       </div>
 
-      {/* Submit Button */}
-      <div className="pt-2">
+      {/* ── TWO EXPLICIT SUBMISSION OPTIONS ── */}
+      <div className="pt-3 space-y-3">
+        {/* Option 1: Standard Submit (Auto-Upload) */}
         <button
-          type="submit"
+          type="button"
+          onClick={handleStandardSubmit}
           disabled={isSubmitting}
           className="w-full py-3.5 px-6 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold rounded-2xl shadow-brand transition disabled:opacity-60 flex items-center justify-center gap-2 text-sm"
         >
@@ -437,14 +511,80 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
           ) : (
             <>
               <Send className="w-4 h-4" strokeWidth={2.5} />
-              Submit Survey
+              Submit Survey (Auto-Upload)
             </>
           )}
         </button>
-        <p className="text-center text-[11px] text-slate-400 mt-3 leading-relaxed">
-          Works 100% offline · Generates an admin transfer QR code &amp; auto-syncs when online
+
+        {/* Option 2: Generate Transfer QR Code */}
+        <button
+          type="button"
+          onClick={handleGenerateTransferQr}
+          disabled={isSubmitting}
+          className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 active:bg-black text-white font-bold rounded-2xl shadow-md transition disabled:opacity-60 flex items-center justify-center gap-2 text-sm border border-slate-800"
+        >
+          <QrCode className="w-4 h-4 text-emerald-400" strokeWidth={2.5} />
+          <span>Generate Transfer QR Code (For Admin Scan)</span>
+        </button>
+
+        <p className="text-center text-[11px] text-slate-400 mt-2 leading-relaxed">
+          Works 100% offline · Choose <strong>Submit</strong> to auto-upload later, or <strong>Transfer QR</strong> for the surveyor to scan right now.
         </p>
       </div>
-    </form>
+
+      {/* ── OFFLINE PEER-TO-PEER QR TRANSFER MODAL ── */}
+      {transferModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center relative animate-slide-up border border-slate-200">
+            <button
+              onClick={() => setTransferModal(null)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+              <QrCode className="w-6 h-6 text-emerald-600" />
+            </div>
+
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Admin Transfer QR Code</h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              Show this QR code to your surveyor or admin. When they scan it with their app, your survey will be transferred directly to their device!
+            </p>
+
+            {/* Respondent Tag */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-4 text-xs text-slate-700 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <User className="w-3.5 h-3.5 text-blue-600" />
+                {transferModal.name}
+              </span>
+              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold">
+                {transferModal.role}
+              </span>
+            </div>
+
+            {/* The QR Code */}
+            <div className="bg-white p-3 border-2 border-slate-900 rounded-2xl inline-block shadow-inner mb-4">
+              <QRCodeSVG value={transferModal.payload} size={200} level="M" />
+            </div>
+
+            <p className="text-[11px] text-slate-400 mb-4 leading-snug">
+              ✓ Also saved safely to this phone. It will auto-upload whenever an internet connection is detected.
+            </p>
+
+            <button
+              onClick={() => {
+                router.push(`/s/${survey.id}/confirmation?subId=${transferModal.subId}`);
+              }}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-brand-sm"
+            >
+              <span>Done / View Confirmation</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
