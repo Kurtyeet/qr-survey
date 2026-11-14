@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  <!-- QR Code Stylized Marks -->
+  <g fill="#ffffff">
+    <!-- Top-Left Corner Box -->
+    <rect x="96" y="96" width="112" height="112" rx="20" fill="none" stroke="#ffffff" stroke-width="24" />
+    <rect x="132" y="132" width="40" height="40" rx="8" fill="#ffffff" />
+
+    <!-- Top-Right Corner Box -->
+    <rect x="304" y="96" width="112" height="112" rx="20" fill="none" stroke="#ffffff" stroke-width="24" />
+    <rect x="340" y="132" width="40" height="40" rx="8" fill="#ffffff" />
+
+    <!-- Bottom-Left Corner Box -->
+    <rect x="96" y="304" width="112" height="112" rx="20" fill="none" stroke="#ffffff" stroke-width="24" />
+    <rect x="132" y="340" width="40" height="40" rx="8" fill="#ffffff" />
+
+    <!-- Center & Accent Data Blocks -->
+    <rect x="236" y="96" width="40" height="40" rx="8" fill="#ffffff" />
+    <rect x="236" y="168" width="40" height="40" rx="8" fill="#ffffff" />
+    <rect x="96" y="236" width="40" height="40" rx="8" fill="#ffffff" />
+    <rect x="168" y="236" width="40" height="40" rx="8" fill="#ffffff" />
+    <rect x="236" y="236" width="40" height="40" rx="8" fill="#60a5fa" />
+    <rect x="304" y="236" width="40" height="40" rx="8" fill="#ffffff" />
+    <rect x="376" y="236" width="40" height="40" rx="8" fill="#ffffff" />
+
+    <!-- Bottom-Right Pattern (Checkmark accent) -->
+    <rect x="236" y="304" width="40" height="40" rx="8" fill="#ffffff" />
+    <rect x="304" y="304" width="112" height="112" rx="20" fill="#10b981" />
+    <path d="M336 360 L354 378 L384 344" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

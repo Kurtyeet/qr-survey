@@ -20,6 +20,7 @@ import {
   Camera,
 } from 'lucide-react';
 import OfflineQrScannerModal from '@/components/OfflineQrScannerModal';
+import InstallPwaButton from '@/components/InstallPwaButton';
 
 export default function AdminSurveysPage() {
   const router = useRouter();
@@ -84,6 +85,7 @@ export default function AdminSurveysPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <InstallPwaButton />
             <button
               onClick={() => setScannerOpen(true)}
               className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold shadow-sm transition"

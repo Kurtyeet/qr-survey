@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { BarChart3, ArrowRight, Smartphone, Camera } from 'lucide-react';
 import OfflineQrScannerModal from './OfflineQrScannerModal';
+import InstallPwaButton from './InstallPwaButton';
 
 interface HomeClientActionsProps {
   latestSurveyId?: string;
@@ -42,6 +43,8 @@ export default function HomeClientActions({ latestSurveyId }: HomeClientActionsP
           <Camera className="w-4 h-4 text-emerald-200" />
           Scan Survey QR
         </button>
+
+        <InstallPwaButton />
       </div>
 
       <OfflineQrScannerModal
