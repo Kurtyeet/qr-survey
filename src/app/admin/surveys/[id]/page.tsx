@@ -43,21 +43,23 @@ export default function SurveyDetailPage() {
   const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   const [surveyUrl, setSurveyUrl] = useState('');
-  const [useOfflinePayload, setUseOfflinePayload] = useState(true);
+  const [networkIps, setNetworkIps] = useState<{ iface: string; ip: string }[]>([]);
+  const [selectedHost, setSelectedHost] = useState('');
+  const [serverPort, setServerPort] = useState('3000');
 
   const activeQrUrl = React.useMemo(() => {
-    if (!survey || typeof window === 'undefined') return surveyUrl;
-    const base = `${window.location.origin}/s/${survey.id}`;
-    if (!useOfflinePayload) return base;
-    const packed = packSurvey(survey);
-    return `${base}?d=${packed}`;
-  }, [survey, surveyUrl, useOfflinePayload]);
+    if (!survey) return '';
+    const host = selectedHost || (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
+    const portPart = serverPort && serverPort !== '80' && serverPort !== '443' ? `:${serverPort}` : '';
+    const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+    return `${protocol}//${host}${portPart}/s/${survey.id}`;
+  }, [survey, selectedHost, serverPort]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && surveyId) {
-      setSurveyUrl(`${window.location.origin}/s/${surveyId}`);
+      setSurveyUrl(activeQrUrl);
     }
-  }, [surveyId]);
+  }, [activeQrUrl, surveyId]);
 
   const loadData = async () => {
     setLoading(true);
@@ -75,6 +77,16 @@ export default function SurveyDetailPage() {
         const subData = await subRes.json();
         setSubmissions(subData);
       }
+
+      // Auto-detect local hotspot IP
+      fetch('/api/admin/network')
+        .then((r) => r.json())
+        .then((net) => {
+          if (net.ips && net.ips.length > 0) setNetworkIps(net.ips);
+          if (net.defaultIp) setSelectedHost((prev) => prev || net.defaultIp);
+          if (net.port) setServerPort(String(net.port));
+        })
+        .catch(console.warn);
     } catch (err) {
       console.error('Failed to load survey data:', err);
     } finally {
@@ -227,20 +239,41 @@ export default function SurveyDetailPage() {
                 {survey.title}
               </h3>
 
-              {/* Offline mode toggle */}
-              <div className="mb-3 print:hidden">
-                <button
-                  type="button"
-                  onClick={() => setUseOfflinePayload(!useOfflinePayload)}
-                  className={`text-[11px] px-3 py-1.5 rounded-full font-semibold border flex items-center gap-1.5 transition ${
-                    useOfflinePayload
-                      ? 'bg-blue-50 text-blue-700 border-blue-200'
-                      : 'bg-slate-50 text-slate-500 border-slate-200'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${useOfflinePayload ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`} />
-                  {useOfflinePayload ? 'Offline Self-Contained QR: ON' : 'Standard Online Link QR: ON'}
-                </button>
+              {/* Hotspot IP Selector */}
+              <div className="mb-4 w-full print:hidden">
+                <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center justify-center gap-1">
+                  <Wifi className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Surveyor Hotspot IP:</span>
+                </label>
+                {networkIps.length > 0 ? (
+                  <select
+                    value={selectedHost}
+                    onChange={(e) => setSelectedHost(e.target.value)}
+                    className="w-full text-xs font-semibold px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 text-center"
+                  >
+                    {networkIps.map((net) => (
+                      <option key={net.ip} value={net.ip}>
+                        {net.ip} ({net.iface})
+                      </option>
+                    ))}
+                    {typeof window !== 'undefined' && window.location.hostname !== 'localhost' && (
+                      <option value={window.location.hostname}>
+                        {window.location.hostname} (Current Domain)
+                      </option>
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={selectedHost}
+                    onChange={(e) => setSelectedHost(e.target.value)}
+                    placeholder="e.g. 192.168.43.1"
+                    className="w-full text-xs font-semibold px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-center"
+                  />
+                )}
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Connect respondent to your Hotspot, then scan.
+                </p>
               </div>
 
               {/* QR Code Canvas (for PNG export) and SVG (for crisp rendering) */}
@@ -310,25 +343,25 @@ export default function SurveyDetailPage() {
           <div className="lg:col-span-2 space-y-4 print:hidden">
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
               <h3 className="text-base font-bold text-slate-900 mb-2 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-blue-600" />
-                How the Offline Auto-Save Works
+                <Wifi className="w-4 h-4 text-blue-600" />
+                How the Surveyor Local Hotspot Works
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                When respondents scan this QR code on their smartphone:
+                Enable field surveying for any new phone with <strong>0% internet access</strong>:
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="font-bold text-slate-800 block mb-1">1. Zero App Install</span>
-                  <span className="text-slate-500">Opens straight in mobile Safari, Chrome, or default browser without app store friction.</span>
+                  <span className="font-bold text-slate-800 block mb-1">1. Surveyor Hotspot</span>
+                  <span className="text-slate-500">Surveyor turns on Personal Hotspot (no cellular data needed). Respondents connect to this Wi-Fi.</span>
                 </div>
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="font-bold text-slate-800 block mb-1">2. Local IndexedDB</span>
-                  <span className="text-slate-500">Keystrokes auto-save continuously. Submitting while offline stores data safely on the phone.</span>
+                  <span className="font-bold text-slate-800 block mb-1">2. Scan Local QR</span>
+                  <span className="text-slate-500">Respondent scans this QR code with their camera. The survey loads directly from your server over Wi-Fi.</span>
                 </div>
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                  <span className="font-bold text-slate-800 block mb-1">3. Background Sync</span>
-                  <span className="text-slate-500">As soon as connection returns, the phone automatically uploads responses with idempotent UUIDs.</span>
+                  <span className="font-bold text-slate-800 block mb-1">3. Direct Local Save</span>
+                  <span className="text-slate-500">Responses transmit directly to your database over the local hotspot network with zero internet required.</span>
                 </div>
               </div>
             </div>

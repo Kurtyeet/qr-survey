@@ -4,9 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Question, SurveyData } from '@/types/survey';
 import { saveDraft, getDraft, queueSubmission, cacheSurvey } from '@/lib/syncEngine';
-import { packSubmission } from '@/lib/surveyPacker';
 import { db } from '@/lib/db';
-import { QRCodeSVG } from 'qrcode.react';
 import {
   Star,
   AlertCircle,
@@ -15,11 +13,6 @@ import {
   CheckCircle2,
   User,
   Briefcase,
-  WifiOff,
-  QrCode,
-  X,
-  Clock,
-  ArrowRight,
 } from 'lucide-react';
 
 interface SurveyFormProps {
@@ -34,13 +27,6 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const [offlineToast, setOfflineToast] = useState(false);
-  const [transferModal, setTransferModal] = useState<{
-    payload: string;
-    subId: string;
-    name: string;
-    role: string;
-  } | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const availableRoles =
@@ -146,14 +132,12 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
     return Object.keys(errors).length === 0;
   };
 
-  // Option 1: Standard Submit (auto-uploads when online)
-  const handleStandardSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!validateForm()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
 
     setIsSubmitting(true);
     try {
@@ -170,84 +154,16 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
       const searchStr = typeof window !== 'undefined' ? window.location.search : '';
       const dParam = new URLSearchParams(searchStr).get('d');
       const confUrl = `/s/${survey.id}/confirmation?subId=${submissionId}${dParam ? `&d=${dParam}` : ''}`;
-
-      if (isOffline) {
-        setOfflineToast(true);
-        setTimeout(() => {
-          window.location.href = confUrl;
-        }, 1200);
-      } else {
-        window.location.href = confUrl;
-      }
+      window.location.href = confUrl;
     } catch (error) {
-      console.error('Failed to queue submission:', error);
-      alert('Could not save response locally. Please try again.');
-      setIsSubmitting(false);
-    }
-  };
-
-  // Option 2: Generate Transfer QR Code immediately
-  const handleGenerateTransferQr = async () => {
-    if (!validateForm()) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const submissionId = await queueSubmission(
-        survey.id,
-        answers,
-        respondentName.trim(),
-        respondentRole
-      );
-
-      // Clean up draft
-      await db.drafts.delete(survey.id).catch(console.warn);
-
-      const subObj = {
-        id: submissionId,
-        surveyId: survey.id,
-        respondentName: respondentName.trim(),
-        respondentRole,
-        answers,
-        submittedAtClient: new Date().toISOString(),
-        status: 'pending' as const,
-        attempts: 0,
-      };
-
-      const payload = packSubmission(subObj);
-      setTransferModal({
-        payload,
-        subId: submissionId,
-        name: respondentName.trim(),
-        role: respondentRole,
-      });
-      setIsSubmitting(false);
-    } catch (error) {
-      console.error('Failed to generate transfer QR:', error);
-      alert('Could not generate transfer QR code. Please try again.');
+      console.error('Failed to submit:', error);
+      alert('Could not save response. Please try again.');
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      {/* Offline Toast Notification upon submitting offline */}
-      {offlineToast && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4 animate-slide-up">
-          <div className="p-4 bg-amber-600 text-white rounded-2xl shadow-2xl flex items-center gap-3">
-            <WifiOff className="w-6 h-6 shrink-0 animate-bounce" />
-            <div>
-              <p className="font-bold text-xs">No Internet Connection!</p>
-              <p className="text-[11px] text-amber-100">
-                Your survey is safely saved on this device and will auto-upload when internet reconnects.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <form onSubmit={handleSubmit} className="space-y-4">
       {/* Auto-save indicator */}
       <div className="flex items-center justify-between bg-white border border-slate-200 shadow-card rounded-xl px-4 py-2.5 text-xs">
         <span className="flex items-center gap-2 font-medium text-slate-600">
@@ -498,99 +414,26 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
         })}
       </div>
 
-      {/* ── TWO EXPLICIT SUBMISSION OPTIONS ── */}
-      <div className="pt-3 space-y-3">
-        {/* Option 1: Standard Submit (Auto-Upload) */}
+      {/* ── CLEAN SUBMISSION BUTTON ── */}
+      <div className="pt-3">
         <button
-          type="button"
-          onClick={handleStandardSubmit}
+          type="submit"
           disabled={isSubmitting}
           className="w-full py-3.5 px-6 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold rounded-2xl shadow-brand transition disabled:opacity-60 flex items-center justify-center gap-2 text-sm"
         >
           {isSubmitting ? (
             <>
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Saving…
+              Submitting…
             </>
           ) : (
             <>
               <Send className="w-4 h-4" strokeWidth={2.5} />
-              Submit Survey (Auto-Upload)
+              Submit Survey
             </>
           )}
         </button>
-
-        {/* Option 2: Generate Transfer QR Code */}
-        <button
-          type="button"
-          onClick={handleGenerateTransferQr}
-          disabled={isSubmitting}
-          className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 active:bg-black text-white font-bold rounded-2xl shadow-md transition disabled:opacity-60 flex items-center justify-center gap-2 text-sm border border-slate-800"
-        >
-          <QrCode className="w-4 h-4 text-emerald-400" strokeWidth={2.5} />
-          <span>Generate Transfer QR Code (For Admin Scan)</span>
-        </button>
-
-        <p className="text-center text-[11px] text-slate-400 mt-2 leading-relaxed">
-          Works 100% offline · Choose <strong>Submit</strong> to auto-upload later, or <strong>Transfer QR</strong> for the surveyor to scan right now.
-        </p>
       </div>
-
-      {/* ── OFFLINE PEER-TO-PEER QR TRANSFER MODAL ── */}
-      {transferModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center relative animate-slide-up border border-slate-200">
-            <button
-              onClick={() => setTransferModal(null)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
-              title="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-              <QrCode className="w-6 h-6 text-emerald-600" />
-            </div>
-
-            <h3 className="text-lg font-bold text-slate-900 mb-1">Admin Transfer QR Code</h3>
-            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              Show this QR code to your surveyor or admin. When they scan it with their app, your survey will be transferred directly to their device!
-            </p>
-
-            {/* Respondent Tag */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-4 text-xs text-slate-700 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 font-semibold">
-                <User className="w-3.5 h-3.5 text-blue-600" />
-                {transferModal.name}
-              </span>
-              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold">
-                {transferModal.role}
-              </span>
-            </div>
-
-            {/* The QR Code */}
-            <div className="bg-white p-3 border-2 border-slate-900 rounded-2xl inline-block shadow-inner mb-4">
-              <QRCodeSVG value={transferModal.payload} size={200} level="M" />
-            </div>
-
-            <p className="text-[11px] text-slate-400 mb-4 leading-snug">
-              ✓ Also saved safely to this phone. It will auto-upload whenever an internet connection is detected.
-            </p>
-
-            <button
-              onClick={() => {
-                const searchStr = typeof window !== 'undefined' ? window.location.search : '';
-                const dParam = new URLSearchParams(searchStr).get('d');
-                window.location.href = `/s/${survey.id}/confirmation?subId=${transferModal.subId}${dParam ? `&d=${dParam}` : ''}`;
-              }}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-brand-sm"
-            >
-              <span>Done / View Confirmation</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+    </form>
   );
 }

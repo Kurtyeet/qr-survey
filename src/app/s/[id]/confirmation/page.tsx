@@ -3,9 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { QRCodeSVG } from 'qrcode.react';
 import { db, OfflineSubmission } from '@/lib/db';
-import { packSubmission } from '@/lib/surveyPacker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import NetworkBanner from '@/components/NetworkBanner';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -14,7 +12,6 @@ import {
   Clock,
   CloudUpload,
   ArrowRight,
-  QrCode,
   User,
   RefreshCw,
   Users,
@@ -61,10 +58,8 @@ function ConfirmationContent() {
   }, [submissionId]);
 
   const isSynced = submission?.status === 'synced';
-  const qrTransferPayload = submission ? packSubmission(submission) : '';
 
   const handleNextRespondent = async () => {
-    // Clear any temporary draft from the last respondent
     if (surveyId) {
       await db.drafts.delete(surveyId).catch(console.warn);
     }
@@ -97,8 +92,8 @@ function ConfirmationContent() {
 
           <p className="text-xs text-slate-500 leading-relaxed mb-4 max-w-xs mx-auto">
             {isSynced
-              ? 'Thank you! Your survey response has been transmitted directly to the server.'
-              : 'Your answers are safely recorded offline on this phone. It will automatically upload when an internet connection is detected.'}
+              ? 'Thank you! Your survey response has been transmitted directly to the surveyor.'
+              : 'Your answers are recorded safely on this device and will auto-upload when internet reconnects.'}
           </p>
 
           {/* Respondent detail chip */}
@@ -135,7 +130,7 @@ function ConfirmationContent() {
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-500 font-medium">Network</span>
               <span className={`font-semibold ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {isOnline ? 'Online' : 'Offline'}
+                {isOnline ? 'Online' : 'Offline (Hotspot)'}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
@@ -149,29 +144,13 @@ function ConfirmationContent() {
             </div>
           </div>
 
-          {/* ── OFFLINE PEER-TO-PEER QR CODE TRANSFER ── */}
-          {qrTransferPayload && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-center">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 mb-1.5">
-                <QrCode className="w-4 h-4 text-blue-600" />
-                <span>Admin Transfer QR</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mb-3 leading-snug">
-                Another surveyor or admin can scan this screen to collect this response.
-              </p>
-              <div className="bg-white p-2.5 border-2 border-slate-900 rounded-xl inline-block shadow-sm">
-                <QRCodeSVG value={qrTransferPayload} size={160} level="M" />
-              </div>
-            </div>
-          )}
-
-          {/* Actions: Kiosk handover mode */}
+          {/* Actions */}
           <div className="space-y-2.5">
             <button
               onClick={handleNextRespondent}
               className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition flex items-center justify-center gap-2 shadow-brand-sm"
             >
-              <span>Next Respondent (Handover)</span>
+              <span>Submit Another Response</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
