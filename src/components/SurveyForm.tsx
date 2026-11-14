@@ -167,13 +167,17 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
       // Clean up draft since it is completed
       await db.drafts.delete(survey.id).catch(console.warn);
 
+      const searchStr = typeof window !== 'undefined' ? window.location.search : '';
+      const dParam = new URLSearchParams(searchStr).get('d');
+      const confUrl = `/s/${survey.id}/confirmation?subId=${submissionId}${dParam ? `&d=${dParam}` : ''}`;
+
       if (isOffline) {
         setOfflineToast(true);
         setTimeout(() => {
-          router.push(`/s/${survey.id}/confirmation?subId=${submissionId}`);
+          window.location.href = confUrl;
         }, 1200);
       } else {
-        router.push(`/s/${survey.id}/confirmation?subId=${submissionId}`);
+        window.location.href = confUrl;
       }
     } catch (error) {
       console.error('Failed to queue submission:', error);
@@ -575,7 +579,9 @@ export default function SurveyForm({ survey }: SurveyFormProps) {
 
             <button
               onClick={() => {
-                router.push(`/s/${survey.id}/confirmation?subId=${transferModal.subId}`);
+                const searchStr = typeof window !== 'undefined' ? window.location.search : '';
+                const dParam = new URLSearchParams(searchStr).get('d');
+                window.location.href = `/s/${survey.id}/confirmation?subId=${transferModal.subId}${dParam ? `&d=${dParam}` : ''}`;
               }}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-brand-sm"
             >

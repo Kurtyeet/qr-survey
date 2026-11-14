@@ -8,7 +8,17 @@ import { db, OfflineSubmission } from '@/lib/db';
 import { packSubmission } from '@/lib/surveyPacker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import NetworkBanner from '@/components/NetworkBanner';
-import { CheckCircle2, Clock, CloudUpload, ArrowRight, QrCode, User, RefreshCw } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  CheckCircle2,
+  Clock,
+  CloudUpload,
+  ArrowRight,
+  QrCode,
+  User,
+  RefreshCw,
+  Users,
+} from 'lucide-react';
 
 function ConfirmationContent() {
   const params = useParams();
@@ -16,9 +26,24 @@ function ConfirmationContent() {
 
   const surveyId = params?.id as string;
   const submissionId = searchParams?.get('subId');
+  const packedParam = searchParams?.get('d');
 
   const { isOnline } = useNetworkStatus();
   const [submission, setSubmission] = useState<OfflineSubmission | null>(null);
+
+  // Total responses collected on this surveyor phone for this survey
+  const totalCollected = useLiveQuery(
+    async () => {
+      try {
+        if (!surveyId) return 0;
+        return await db.submissionsQueue.where('surveyId').equals(surveyId).count();
+      } catch {
+        return 0;
+      }
+    },
+    [surveyId],
+    1
+  );
 
   useEffect(() => {
     if (!submissionId) return;
@@ -37,6 +62,15 @@ function ConfirmationContent() {
 
   const isSynced = submission?.status === 'synced';
   const qrTransferPayload = submission ? packSubmission(submission) : '';
+
+  const handleNextRespondent = async () => {
+    // Clear any temporary draft from the last respondent
+    if (surveyId) {
+      await db.drafts.delete(surveyId).catch(console.warn);
+    }
+    const targetUrl = `/s/${surveyId}${packedParam ? `?d=${packedParam}` : ''}`;
+    window.location.href = targetUrl;
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col pb-12">
@@ -61,15 +95,15 @@ function ConfirmationContent() {
             {isSynced ? 'Response Uploaded!' : 'Response Saved on Device!'}
           </h1>
 
-          <p className="text-xs text-slate-500 leading-relaxed mb-5 max-w-xs mx-auto">
+          <p className="text-xs text-slate-500 leading-relaxed mb-4 max-w-xs mx-auto">
             {isSynced
               ? 'Thank you! Your survey response has been transmitted directly to the server.'
-              : 'Your answers are safely recorded offline. The admin can scan the QR code below to collect it right now, or your phone will auto-upload when internet reconnects.'}
+              : 'Your answers are safely recorded offline on this phone. It will automatically upload when an internet connection is detected.'}
           </p>
 
           {/* Respondent detail chip */}
           {submission && (submission.respondentName || submission.respondentRole) && (
-            <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3 mb-5 text-left text-xs text-blue-900 flex items-center justify-between">
+            <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3 mb-4 text-left text-xs text-blue-900 flex items-center justify-between">
               <span className="flex items-center gap-1.5 font-semibold">
                 <User className="w-3.5 h-3.5 text-blue-600" />
                 {submission.respondentName || 'Anonymous'}
@@ -82,25 +116,8 @@ function ConfirmationContent() {
             </div>
           )}
 
-          {/* ── OFFLINE PEER-TO-PEER QR CODE TRANSFER ── */}
-          {qrTransferPayload && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-center">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 mb-2">
-                <QrCode className="w-4 h-4 text-blue-600" />
-                <span>Admin / Surveyor Transfer QR</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mb-3 leading-snug">
-                In an offline area? Have your admin/surveyor scan this screen with their app to collect this survey!
-              </p>
-
-              <div className="bg-white p-3 border-2 border-slate-900 rounded-xl inline-block shadow-sm">
-                <QRCodeSVG value={qrTransferPayload} size={180} level="M" />
-              </div>
-            </div>
-          )}
-
           {/* Sync Meta */}
-          <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-200/80 text-left space-y-2">
+          <div className="bg-slate-50 rounded-2xl p-4 mb-5 border border-slate-200/80 text-left space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-500 font-medium">Status</span>
               {isSynced ? (
@@ -121,17 +138,42 @@ function ConfirmationContent() {
                 {isOnline ? 'Online' : 'Offline'}
               </span>
             </div>
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+              <span className="text-slate-500 font-medium flex items-center gap-1">
+                <Users className="w-3 h-3 text-slate-400" />
+                Collected on this device
+              </span>
+              <span className="font-bold text-slate-800">
+                {totalCollected ?? 1} response{(totalCollected ?? 1) !== 1 ? 's' : ''}
+              </span>
+            </div>
           </div>
 
-          {/* Actions */}
+          {/* ── OFFLINE PEER-TO-PEER QR CODE TRANSFER ── */}
+          {qrTransferPayload && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 mb-1.5">
+                <QrCode className="w-4 h-4 text-blue-600" />
+                <span>Admin Transfer QR</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-3 leading-snug">
+                Another surveyor or admin can scan this screen to collect this response.
+              </p>
+              <div className="bg-white p-2.5 border-2 border-slate-900 rounded-xl inline-block shadow-sm">
+                <QRCodeSVG value={qrTransferPayload} size={160} level="M" />
+              </div>
+            </div>
+          )}
+
+          {/* Actions: Kiosk handover mode */}
           <div className="space-y-2.5">
-            <Link
-              href={`/s/${surveyId}`}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-brand-sm"
+            <button
+              onClick={handleNextRespondent}
+              className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition flex items-center justify-center gap-2 shadow-brand-sm"
             >
-              Take Another Survey
+              <span>Next Respondent (Handover)</span>
               <ArrowRight className="w-4 h-4" />
-            </Link>
+            </button>
 
             <Link
               href="/"
